@@ -1,0 +1,109 @@
+name: 📦 Auto Build Windows Application
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 推送 v1.0.0 格式标签时自动触发
+  workflow_dispatch:  # 允许手动触发（GitHub UI 按钮）
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write  # 允许创建 Release
+    
+    steps:
+      # =============== 1. 检出代码 ===============
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # =============== 2. 设置 Python 环境 ===============
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # =============== 3. 安装构建依赖 ===============
+      - name: ⚙️ Install build dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pyinstaller==6.3.0 selenium==4.19.0 pillow==10.2.0
+
+      # =============== 4. 智能安装 EdgeDriver（关键步骤！） ===============
+      - name: 🌐 Install matching EdgeDriver via Chocolatey
+        run: |
+          # Chocolatey 已预装在 GitHub Actions Windows 环境
+          choco install selenium-edge-driver -y --no-progress
+          
+          # 验证安装
+          $driverPath = "C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe"
+          if (Test-Path $driverPath) {
+            Write-Host "✅ EdgeDriver installed successfully at $driverPath"
+            Copy-Item $driverPath -Destination "msedgedriver.exe" -Force
+            Write-Host "✅ Copied to project root: msedgedriver.exe"
+          } else {
+            Write-Error "❌ EdgeDriver not found after installation!"
+            exit 1
+          }
+        shell: pwsh
+
+      # =============== 5. PyInstaller 打包 ===============
+      - name: 📦 Build executable with PyInstaller
+        run: |
+          pyinstaller ^
+            --onefile ^
+            --windowed ^
+            --add-binary "msedgedriver.exe;." ^
+            --name "箐师帮试卷下载工具" ^
+            --icon=NONE ^
+            --clean ^
+            --log-level=WARN ^
+            main.py
+        shell: pwsh
+
+      # =============== 6. 验证构建结果 ===============
+      - name: 🔍 Verify build output
+        run: |
+          $exePath = "dist\箐师帮试卷下载工具.exe"
+          if (Test-Path $exePath) {
+            Write-Host "✅ Build successful! Executable size: $((Get-Item $exePath).Length / 1MB) MB"
+            # 显示文件信息
+            Get-Item $exePath | Format-List
+          } else {
+            Write-Error "❌ Build failed! Executable not found."
+            exit 1
+          }
+        shell: pwsh
+
+      # =============== 7. 上传构建产物（Actions 工件） ===============
+      - name: 📤 Upload artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.ref_name }}
+          path: dist/箐师帮试卷下载工具.exe
+          retention-days: 30
+
+      # =============== 8. 创建 GitHub Release（仅标签触发时） ===============
+      - name: 🎁 Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/箐师帮试卷下载工具.exe
+          body: |
+            ## 📦 箐师帮试卷下载工具 v${{ github.ref_name }}
+            
+            ✅ 自动构建的 Windows 可执行文件
+            
+            ### 使用说明：
+            1. 下载 `箐师帮试卷下载工具.exe`
+            2. **无需额外安装** EdgeDriver（已内置）
+            3. 双击运行即可使用
+            
+            ### 依赖环境：
+            - Windows 10/11
+            - 已安装 Microsoft Edge 浏览器（系统自带）
+            
+            > 💡 提示：首次运行可能被安全软件拦截，请选择"仍要运行"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
