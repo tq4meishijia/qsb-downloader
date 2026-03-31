@@ -23,8 +23,6 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          # 关键修复：禁用自动依赖安装（避免找不到 requirements.txt 报错）
-          cache-dependency-path: '**/requirements.txt'  # 可选，有 requirements.txt 时启用
 
       # =============== 3. 安装构建依赖 ===============
       - name: ⚙️ Install build dependencies
@@ -67,23 +65,13 @@ jobs:
           } else {
             Write-Error "❌ CRITICAL: Pre-installed EdgeDriver not found at $driverSource"
             Write-Error "This should NEVER happen on GitHub Actions Windows runners."
-            Write-Error "Please check GitHub Actions environment documentation."
             exit 1
           }
         shell: pwsh
 
-      # =============== 5. PyInstaller 打包 ===============
+      # =============== 5. PyInstaller 打包（单行命令修复） ===============
       - name: 📦 Build executable with PyInstaller
-        run: |
-          pyinstaller ^
-            --onefile ^
-            --windowed ^
-            --add-binary "msedgedriver.exe;." ^
-            --name "箐师帮试卷下载工具" ^
-            --icon=NONE ^
-            --clean ^
-            --log-level=WARN ^
-            main.py
+        run: pyinstaller --onefile --windowed --add-binary "msedgedriver.exe;." --name "箐师帮试卷下载工具" --icon=NONE --clean --log-level=WARN main.py
         shell: pwsh
 
       # =============== 6. 验证构建结果 ===============
@@ -97,6 +85,9 @@ jobs:
             Get-Item $exePath | Format-List Name, Length, LastWriteTime
           } else {
             Write-Error "❌ Build failed! Executable not found at $exePath"
+            # 显示 dist 目录内容便于调试
+            Write-Host "🔍 Checking dist directory contents:"
+            Get-ChildItem dist -Recurse | Format-Table Name, Length, LastWriteTime
             exit 1
           }
         shell: pwsh
@@ -112,7 +103,7 @@ jobs:
       # =============== 8. 创建 GitHub Release（仅标签触发时） ===============
       - name: 🎁 Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2  # 升级到 v2
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/箐师帮试卷下载工具.exe
           tag_name: ${{ github.ref_name }}
@@ -120,7 +111,7 @@ jobs:
           body: |
             ## 📦 箐师帮试卷下载工具 ${{ github.ref_name }}
             
-            ✅ 自动构建的 Windows 可执行文件（含内置 EdgeDriver）
+            ✅ **自动构建的 Windows 可执行文件（含内置 EdgeDriver）**
             
             ### ✨ 特性
             - 无需额外安装 EdgeDriver（已完美集成）
@@ -140,5 +131,11 @@ jobs:
             ### 🔒 安全说明
             所有构建均在 GitHub 官方安全环境完成，无任何第三方干预。
             源代码完全开源，欢迎审计。
+            
+            ### 📊 构建信息
+            - Python: 3.11
+            - PyInstaller: 6.3.0
+            - Selenium: 4.19.0
+            - EdgeDriver: 预装版本（与 GitHub Actions 环境匹配）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
