@@ -23,27 +23,51 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          # 关键修复：禁用自动依赖安装（避免找不到 requirements.txt 报错）
+          cache-dependency-path: '**/requirements.txt'  # 可选，有 requirements.txt 时启用
 
       # =============== 3. 安装构建依赖 ===============
       - name: ⚙️ Install build dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install pyinstaller==6.3.0 selenium==4.19.0 pillow==10.2.0
+        shell: pwsh
 
-      # =============== 4. 智能安装 EdgeDriver（关键步骤！） ===============
-      - name: 🌐 Install matching EdgeDriver via Chocolatey
+      # =============== 4. 使用预装 EdgeDriver（关键修复！） ===============
+      - name: 🌐 Use pre-installed EdgeDriver (GitHub Actions)
         run: |
-          # Chocolatey 已预装在 GitHub Actions Windows 环境
-          choco install selenium-edge-driver -y --no-progress
+          $driverSource = "C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe"
+          $driverDest = "msedgedriver.exe"
           
-          # 验证安装
-          $driverPath = "C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe"
-          if (Test-Path $driverPath) {
-            Write-Host "✅ EdgeDriver installed successfully at $driverPath"
-            Copy-Item $driverPath -Destination "msedgedriver.exe" -Force
-            Write-Host "✅ Copied to project root: msedgedriver.exe"
+          Write-Host "🔍 Checking for pre-installed EdgeDriver at $driverSource..."
+          
+          if (Test-Path $driverSource) {
+            # 显示驱动版本信息
+            $versionInfo = & $driverSource --version 2>&1
+            Write-Host "✅ Found EdgeDriver! Version: $versionInfo"
+            
+            # 复制到项目根目录
+            Copy-Item $driverSource -Destination $driverDest -Force
+            
+            # 验证复制成功
+            if (Test-Path $driverDest) {
+              $sizeKB = [math]::Round((Get-Item $driverDest).Length / 1KB, 2)
+              Write-Host "✅ Successfully copied EdgeDriver to project root ($sizeKB KB)"
+              
+              # 显示浏览器版本（用于兼容性参考）
+              $browserPath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+              if (Test-Path $browserPath) {
+                $browserVer = (Get-Item $browserPath).VersionInfo.ProductVersion
+                Write-Host "ℹ️  Microsoft Edge Browser Version: $browserVer"
+              }
+            } else {
+              Write-Error "❌ Failed to copy EdgeDriver to project root"
+              exit 1
+            }
           } else {
-            Write-Error "❌ EdgeDriver not found after installation!"
+            Write-Error "❌ CRITICAL: Pre-installed EdgeDriver not found at $driverSource"
+            Write-Error "This should NEVER happen on GitHub Actions Windows runners."
+            Write-Error "Please check GitHub Actions environment documentation."
             exit 1
           }
         shell: pwsh
@@ -67,11 +91,12 @@ jobs:
         run: |
           $exePath = "dist\箐师帮试卷下载工具.exe"
           if (Test-Path $exePath) {
-            Write-Host "✅ Build successful! Executable size: $((Get-Item $exePath).Length / 1MB) MB"
-            # 显示文件信息
-            Get-Item $exePath | Format-List
+            $fileSize = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
+            Write-Host "✅ Build successful! Executable size: $fileSize MB"
+            Write-Host "📄 File details:"
+            Get-Item $exePath | Format-List Name, Length, LastWriteTime
           } else {
-            Write-Error "❌ Build failed! Executable not found."
+            Write-Error "❌ Build failed! Executable not found at $exePath"
             exit 1
           }
         shell: pwsh
@@ -87,23 +112,33 @@ jobs:
       # =============== 8. 创建 GitHub Release（仅标签触发时） ===============
       - name: 🎁 Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2  # 升级到 v2
         with:
           files: dist/箐师帮试卷下载工具.exe
+          tag_name: ${{ github.ref_name }}
+          name: "Release ${{ github.ref_name }}"
           body: |
-            ## 📦 箐师帮试卷下载工具 v${{ github.ref_name }}
+            ## 📦 箐师帮试卷下载工具 ${{ github.ref_name }}
             
-            ✅ 自动构建的 Windows 可执行文件
+            ✅ 自动构建的 Windows 可执行文件（含内置 EdgeDriver）
             
-            ### 使用说明：
+            ### ✨ 特性
+            - 无需额外安装 EdgeDriver（已完美集成）
+            - 单文件绿色版，即下即用
+            - 专为 Windows 10/11 优化
+            
+            ### 📥 使用说明
             1. 下载 `箐师帮试卷下载工具.exe`
-            2. **无需额外安装** EdgeDriver（已内置）
-            3. 双击运行即可使用
+            2. 双击运行（需已安装 Microsoft Edge 浏览器）
+            3. 首次运行若被拦截：右键 → "以管理员身份运行" → 选择"仍要运行"
             
-            ### 依赖环境：
-            - Windows 10/11
-            - 已安装 Microsoft Edge 浏览器（系统自带）
+            ### ⚠️ 重要提示
+            - 本程序仅在 **Windows 10/11** 环境下运行
+            - 需系统已安装 **Microsoft Edge 浏览器**（Windows 自带）
+            - 杀毒软件可能误报（程序无害，可添加信任）
             
-            > 💡 提示：首次运行可能被安全软件拦截，请选择"仍要运行"
+            ### 🔒 安全说明
+            所有构建均在 GitHub 官方安全环境完成，无任何第三方干预。
+            源代码完全开源，欢迎审计。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
