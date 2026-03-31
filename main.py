@@ -20,7 +20,7 @@ import sys  # 新增sys模块用于检测打包环境
 class ExamDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("箐师帮试卷下载工具")
+        self.root.title("qsb-downloader")
         self.root.geometry("800x700")
         self.root.configure(bg="#f0f2f5")
         
