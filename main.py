@@ -50,13 +50,10 @@ class ExamDownloaderApp:
         # 操作按钮
         btn_frame = ttk.Frame(input_frame)
         btn_frame.grid(row=1, column=0, columnspan=2, pady=10, sticky=tk.E)
-        
+
         self.login_btn = ttk.Button(btn_frame, text="打开登录页面", command=self.start_login)
         self.login_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.confirm_login_btn = ttk.Button(btn_frame, text="我已登录", state=tk.DISABLED, command=self.confirm_login)
-        self.confirm_login_btn.pack(side=tk.LEFT, padx=5)
-        
+
         self.download_btn = ttk.Button(btn_frame, text="开始批量下载", state=tk.DISABLED, command=self.start_batch_download)
         self.download_btn.pack(side=tk.LEFT, padx=5)
         
@@ -70,7 +67,7 @@ class ExamDownloaderApp:
         
         # 说明文字
         ttk.Label(main_frame, text="提示: 1. 点击'打开登录页面'后，请使用微信扫码登录\n"
-                 "2. 登录成功后点击'我已登录'按钮\n"
+                 "2. 登录成功后即可点击'开始批量下载'\n"
                  "3. 在上方文本框中粘贴试卷链接，每行一个\n"
                  "4. 点击'开始批量下载'\n"
                  "5. 生成的PDF将自动命名并保存在当前目录", 
@@ -188,7 +185,7 @@ class ExamDownloaderApp:
             # 固定打开首页，等待用户手动登录
             self.driver.get("https://www.jingshibang.com/home/")
             self.log("✅ 已打开登录页面，请在浏览器中使用微信扫码登录...")
-            self.root.after(0, lambda: self.confirm_login_btn.config(state=tk.NORMAL))
+            self.root.after(0, lambda: self.download_btn.config(state=tk.NORMAL))
             
         except Exception as e:
             error_msg = f"打开登录页面失败: {str(e)}"
@@ -204,39 +201,21 @@ class ExamDownloaderApp:
                     pass
             self.driver = None
 
-    def confirm_login(self):
-        """手动确认登录状态"""
-        if self.driver:
-            # 验证是否真的登录成功
-            try:
-                WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".user-avatar, .header-user-info"))
-                )
-                self.log("✅ 登录状态已确认！")
-                self.confirm_login_btn.config(state=tk.DISABLED)
-                self.download_btn.config(state=tk.NORMAL)
-            except:
-                messagebox.showwarning("警告", "检测到未登录状态，请先完成登录！")
-                self.log("⚠️ 未检测到登录状态，请先完成微信扫码登录", "error")
-        else:
-            messagebox.showwarning("警告", "请先打开登录页面！")
-
     def start_batch_download(self):
         """启动批量下载流程"""
         if not self.driver:
-            messagebox.showerror("错误", "请先完成微信登录")
+            messagebox.showerror("错误", "请先打开登录页面")
             return
 
         urls_text = self.url_text.get("1.0", tk.END).strip()
         urls = [url.strip() for url in urls_text.split('\n') if url.strip()]
-        
+
         if not urls:
             messagebox.showwarning("警告", "请至少输入一个试卷链接！")
             return
 
         self.is_downloading = True
         self.download_btn.config(state=tk.DISABLED)
-        self.confirm_login_btn.config(state=tk.DISABLED)
         self.login_btn.config(state=tk.DISABLED)
         
         self.log(f"开始批量下载 {len(urls)} 份试卷...")
@@ -440,7 +419,7 @@ class ExamDownloaderApp:
                 self.log("❌ 浏览器会话已失效，请重新登录", "error")
                 self.root.after(0, lambda: (
                     messagebox.showerror("会话失效", "浏览器会话已失效，请重新登录"),
-                    self.confirm_login_btn.config(state=tk.NORMAL),
+                    self.download_btn.config(state=tk.NORMAL),
                     self.download_btn.config(state=tk.DISABLED)
                 ))
             else:
